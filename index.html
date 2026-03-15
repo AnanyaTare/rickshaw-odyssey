@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autorickshaw Odyssey — Mumbai Traffic Simulation</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { background: #08091a; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: monospace; }
+    #R { width: 100%; max-width: 800px; height: 620px; position: relative; overflow: hidden; background: #08091a; border-radius: 12px; }
+    #cv { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #hud { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; gap: 6px; pointer-events: none; z-index: 5; }
+    .pill { background: rgba(8,9,26,0.85); border: 0.5px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 5px 9px; text-align: center; flex: 1; }
+    .pv { display: block; font: 700 13px/1 monospace; color: #FFD54F; }
+    .pl { display: block; font: 400 9px/1 monospace; color: rgba(180,200,255,0.45); margin-top: 2px; text-transform: uppercase; letter-spacing: .06em; }
+    #envbadge { position: absolute; top: 52px; left: 50%; transform: translateX(-50%); background: rgba(8,9,26,0.88); border: 0.5px solid rgba(255,213,79,0.3); border-radius: 20px; padding: 4px 16px; font: 600 10px/1 monospace; color: #FFD54F; pointer-events: none; z-index: 5; white-space: nowrap; letter-spacing: .04em; }
+    #screen { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(8,9,26,0.92); }
+    #screen h2 { font: 700 22px/1 monospace; color: #FFD54F; margin-bottom: 8px; letter-spacing: .04em; }
+    #screen p { font: 400 11px/1.7 monospace; color: rgba(180,200,255,0.6); text-align: center; margin-bottom: 20px; max-width: 300px; }
+    .sbtn { background: rgba(255,213,79,0.15); border: 1.5px solid rgba(255,213,79,0.5); color: #FFD54F; font: 700 12px/1 monospace; padding: 10px 26px; border-radius: 9px; cursor: pointer; letter-spacing: .05em; margin: 3px; }
+    .sbtn:hover { background: rgba(255,213,79,0.28); }
+    .sbtn.s2 { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.15); color: rgba(180,200,255,0.6); }
+    #toast { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); background: rgba(8,9,26,0.92); color: #FFD54F; font: 700 11px/1 monospace; padding: 5px 14px; border-radius: 7px; white-space: nowrap; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 10; }
+    #cbar { position: absolute; bottom: 0; left: 0; right: 0; height: 52px; background: rgba(8,9,26,0.92); border-top: 0.5px solid rgba(255,255,255,0.1); display: none; align-items: center; justify-content: space-between; padding: 0 10px; z-index: 10; gap: 6px; }
+    .cb { background: rgba(255,255,255,0.07); border: 0.5px solid rgba(255,255,255,0.15); color: #ccd; font: 600 11px/1 monospace; padding: 8px 11px; border-radius: 7px; cursor: pointer; user-select: none; white-space: nowrap; flex-shrink: 0; }
+    .cb:active { opacity: .65; }
+    .cb.y { background: rgba(255,213,79,0.15); border-color: rgba(255,213,79,0.5); color: #FFD54F; }
+    .cb.r { border-color: rgba(255,100,100,0.35); color: #FF6B6B; }
+    #mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: 0 4px; }
+    .br { display: flex; align-items: center; gap: 5px; font: 400 9px/1 monospace; color: rgba(180,200,255,0.4); }
+    .bt { flex: 1; height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
+    .bf { height: 100%; border-radius: 2px; transition: width .12s; }
+    /* Responsive */
+    @media (max-width: 600px) {
+      #R { border-radius: 0; height: 100vh; max-width: 100%; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+<div id="R">
+  <canvas id="cv"></canvas>
+
+  <div id="hud">
+    <div class="pill"><span class="pv" id="hS">0</span><span class="pl">score</span></div>
+    <div class="pill"><span class="pv" id="hD">0km</span><span class="pl">distance</span></div>
+    <div class="pill"><span class="pv" id="hP">Dawn</span><span class="pl">phase</span></div>
+    <div class="pill"><span class="pv" id="hL">&#9829;&#9829;&#9829;</span><span class="pl">lives</span></div>
+  </div>
+
+  <div id="envbadge">Worli Sea Face Promenade</div>
+  <div id="toast"></div>
+
+  <div id="screen">
+    <h2 id="sT">Autorickshaw Odyssey</h2>
+    <p id="sB">Start on the Worli promenade.<br>Sea on your left. Drive hard enough —<br>the Sea Link rises from the water.</p>
+    <div id="sBs"><button class="sbtn" id="sBtn">Start engine</button></div>
+    <p style="font:400 9px/1 monospace;color:rgba(180,200,255,0.28);margin-top:14px">
+      A / D or arrows &nbsp;·&nbsp; Space = horn &nbsp;·&nbsp; W = turbo &nbsp;·&nbsp; R = restart
+    </p>
+  </div>
+
+  <div id="cbar">
+    <button class="cb" id="bL">&#9664; Left</button>
+    <div id="mid">
+      <div class="br"><span>dist</span><div class="bt"><div class="bf" id="db" style="width:0%;background:#FFD54F"></div></div></div>
+      <div class="br"><span>turbo</span><div class="bt"><div class="bf" id="tb" style="width:0%;background:#00E5C0"></div></div></div>
+    </div>
+    <button class="cb y" id="bH">Horn</button>
+    <button class="cb" id="bR2">Right &#9654;</button>
+    <button class="cb" id="bP">&#9208;</button>
+    <button class="cb r" id="bRst">&#8635; Restart</button>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+//  AUTORICKSHAW ODYSSEY — Complete Game Source
+//  Mumbai Traffic Simulation
+//  Built with vanilla HTML5 Canvas + CSS + JS. No dependencies.
+// ─────────────────────────────────────────────────────────────
+
+const root = document.getElementById('R');
+const cv   = document.getElementById('cv');
+const c    = cv.getContext('2d');
+let W, H;
+
+function rsz() {
+  W = root.clientWidth;
+  H = root.clientHeight;
+  cv.width  = W;
+  cv.height = H;
+}
+rsz();
+window.addEventListener('resize', () => { rsz(); if (G && G.live) calcLanes(); });
+
+// ── MATH HELPERS ──────────────────────────────────────────────
+function hf(n) { let x = Math.sin(n * 127.1 + 311.7) * 43758.5; return x - Math.floor(x); }
+function n1(x) { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return hf(i) * (1 - u) + hf(i + 1) * u; }
+function lerp(a, b, t)   { return a + (b - a) * t; }
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+function ease(t) { return t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+
+// ── ENVIRONMENT TRANSITION DISTANCES ──────────────────────────
+// Promenade → Sea Link transition
+const PROM_END   = 80;   // pure promenade up to here (km)
+const TRANS_END  = 130;  // blend zone ends here (km)
+const LINK_START = 130;  // pure Sea Link from here (km)
+
+// ── PHASE DEFINITIONS ─────────────────────────────────────────
+// Each phase: name, sky gradient, sea colors, rain intensity, speed, next phase distance
+const PHASES = [
+  { name:'Dawn',     sky0:'#1a0e3a', sky1:'#2d1a5e', sea0:'#0a1a3a', sea1:'#1a3a6e', rain:0,    spd:3.2, next:160  },
+  { name:'Rush',     sky0:'#0e0820', sky1:'#1a0f38', sea0:'#081828', sea1:'#123060', rain:.28,  spd:5.0, next:380  },
+  { name:'Monsoon',  sky0:'#060c1a', sky1:'#0a1428', sea0:'#061020', sea1:'#0e2040', rain:.95,  spd:4.4, next:720  },
+  { name:'Night',    sky0:'#04050f', sky1:'#080a1c', sea0:'#040810', sea1:'#081428', rain:.35,  spd:7.0, next:1100 },
+  { name:'Festival', sky0:'#1a0428', sky1:'#28063e', sea0:'#0a0520', sea1:'#180840', rain:.55,  spd:8.2, next:Infinity },
+];
+
+// ── GAME STATE ─────────────────────────────────────────────────
+let G = {
+  live:false, paused:false, over:false,
+  dist:0, score:0, pi:0, lives:3, inv:0, turbo:0, boostTimer:0,
+  lane:1, ax:0, ay:0,
+  seed: Math.random() * 9999,
+  t:0, scroll:0, bScroll:0, lLock:0,
+  obs:[], pu:[], ptcl:[], rain:[], splash:[], traffic:[],
+  obTick:0, puTick:0, trTick:0, crashFlash:0
+};
+
+let LANES = [];
+const AW = 30, AH = 52; // autorickshaw dimensions
+
+// Road boundaries
+const RL = () => W * .30;
+const RR = () => W * .80;
+
+function calcLanes() {
+  const rl = RL(), rw = RR() - rl;
+  LANES = [rl + rw * .16, rl + rw * .5, rl + rw * .84];
+  G.ax = LANES[G.lane];
+  G.ay = H * .70;
+}
+
+function ph()  { return PHASES[G.pi]; }
+
+// Blend factor: 0 = full promenade, 1 = full Sea Link
+function blend() {
+  if (G.dist <= PROM_END)   return 0;
+  if (G.dist >= LINK_START) return 1;
+  return ease((G.dist - PROM_END) / (TRANS_END - PROM_END));
+}
+
+// Actual speed including boost
+function actualSpeed() { return ph().spd + (G.boostTimer > 0 ? 5.5 : 0); }
+
+// ── TOAST MESSAGES ─────────────────────────────────────────────
+let toastT = null;
+function toast(txt, ms = 1900) {
+  const e = document.getElementById('toast');
+  e.textContent = txt;
+  e.style.opacity = 1;
+  clearTimeout(toastT);
+  toastT = setTimeout(() => e.style.opacity = 0, ms);
+}
+
+// ── PARTICLE BURST ─────────────────────────────────────────────
+function burst(x, y, col, n, speed = 6) {
+  for (let i = 0; i < n; i++)
+    G.ptcl.push({ x, y, vx:(Math.random()-.5)*speed, vy:(Math.random()-.5)*speed-2, r:2+Math.random()*3, a:1, col });
+}
+
+// ── GAME SCREENS ───────────────────────────────────────────────
+function showOver() {
+  G.live = false; G.over = true;
+  document.getElementById('screen').style.display = 'flex';
+  document.getElementById('sT').textContent = 'Engine stalled';
+  document.getElementById('sB').innerHTML =
+    `Score <span style="color:#FFD54F">${G.score.toLocaleString()}</span> &nbsp;·&nbsp; ` +
+    `<span style="color:#FFD54F">${Math.floor(G.dist)} km</span><br><br>` +
+    (G.dist < LINK_START ? "You didn't reach the Sea Link.<br>The city waits." : 'Mumbai is undefeated.');
+  const d = document.getElementById('sBs'); d.innerHTML = '';
+  const b1 = document.createElement('button'); b1.className = 'sbtn'; b1.textContent = 'Try again';   b1.onclick = startGame;
+  const b2 = document.createElement('button'); b2.className = 'sbtn s2'; b2.textContent = 'Main menu'; b2.onclick = showStart;
+  d.appendChild(b1); d.appendChild(b2);
+}
+
+function showStart() {
+  document.getElementById('screen').style.display = 'flex';
+  document.getElementById('sT').textContent = 'Autorickshaw Odyssey';
+  document.getElementById('sB').innerHTML = 'Start on the Worli promenade.<br>Sea on your left. Drive hard enough —<br>the Sea Link rises from the water.';
+  const d = document.getElementById('sBs'); d.innerHTML = '';
+  const b = document.createElement('button'); b.className = 'sbtn'; b.textContent = 'Start engine'; b.onclick = startGame;
+  d.appendChild(b);
+}
+
+function resetState() {
+  G.dist=0; G.score=0; G.pi=0; G.lives=3; G.inv=0; G.turbo=0; G.boostTimer=0;
+  G.lane=1; G.t=0; G.scroll=0; G.bScroll=0; G.lLock=0; G.crashFlash=0;
+  G.obs=[]; G.pu=[]; G.ptcl=[]; G.rain=[]; G.splash=[]; G.traffic=[];
+  G.obTick=0; G.puTick=0; G.trTick=0;
+  calcLanes(); G.ax = LANES[G.lane];
+  updateBadge();
+}
+
+function startGame() {
+  document.getElementById('screen').style.display = 'none';
+  resetState();
+  document.getElementById('cbar').style.display = 'flex';
+  G.live = true; G.paused = false; G.over = false;
+}
+
+// ── PLAYER ACTIONS ─────────────────────────────────────────────
+function doHorn() {
+  if (!G.live || G.paused) return;
+  G.obs.forEach(o => { if (Math.abs(o.y-G.ay)<130 && Math.abs(o.x-G.ax)<90) { o.x += o.x>G.ax ? 34:-34; o.scared=25; } });
+  G.traffic.forEach(v => { if (Math.abs(v.y-G.ay)<110) v.scared=14; });
+  toast('BEEP BEEP!'); burst(G.ax, G.ay-AH/2, '#FFD54F', 7);
+}
+
+function doTurbo() {
+  if (!G.live || G.paused || G.turbo < 80) return;
+  G.turbo = 0; G.boostTimer = 160;
+  toast('TURBO BOOST!');
+  burst(G.ax, G.ay+AH/2, '#00E5C0', 14, 8);
+  burst(G.ax, G.ay, '#FFD54F', 8, 5);
+}
+
+function goLane(d) { if (!G.live || G.paused || G.lLock > 0) return; G.lane = clamp(G.lane+d, 0, 2); G.lLock=17; }
+function doPause()  { if (!G.live) return; G.paused = !G.paused; document.getElementById('bP').textContent = G.paused ? '▶' : '⏸'; }
+function doRestart(){ document.getElementById('screen').style.display='none'; resetState(); document.getElementById('cbar').style.display='flex'; G.live=true; G.paused=false; G.over=false; }
+
+// ── CONTROLS ───────────────────────────────────────────────────
+document.getElementById('bL').addEventListener('pointerdown', () => goLane(-1));
+document.getElementById('bR2').addEventListener('pointerdown', () => goLane(1));
+document.getElementById('bH').addEventListener('click', doHorn);
+document.getElementById('bP').addEventListener('click', doPause);
+document.getElementById('bRst').addEventListener('click', doRestart);
+document.getElementById('sBtn').addEventListener('click', startGame);
+
+// Touch swipe
+let tx0 = 0;
+root.addEventListener('touchstart', e => { tx0 = e.touches[0].clientX; }, { passive:true });
+root.addEventListener('touchend',   e => { const dx=e.changedTouches[0].clientX-tx0; if(Math.abs(dx)>36){dx<0?goLane(-1):goLane(1);} }, { passive:true });
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.key==='ArrowLeft' ||e.key==='a') goLane(-1);
+  else if (e.key==='ArrowRight'||e.key==='d') goLane(1);
+  else if (e.key===' ')      { doHorn();   e.preventDefault(); }
+  else if (e.key==='ArrowUp'||e.key==='w') { doTurbo(); e.preventDefault(); }
+  else if (e.key==='p'||e.key==='P') doPause();
+  else if (e.key==='r'||e.key==='R') doRestart();
+});
+
+// ── TRAFFIC VEHICLE TYPES ──────────────────────────────────────
+const VTYPES = [
+  {id:'taxi',  w:26,h:44, body:'#d4b800',roof:'#111',    onc:false,col:true },
+  {id:'taxi',  w:26,h:44, body:'#d4b800',roof:'#111',    onc:true, col:true },
+  {id:'bus',   w:36,h:56, body:'#cc2200',roof:'#881500', onc:false,col:true },
+  {id:'bus',   w:36,h:56, body:'#cc2200',roof:'#881500', onc:true, col:true },
+  {id:'bike',  w:12,h:28, body:'#1a85e0',roof:'#0d4a8a', onc:false,col:true },
+  {id:'bike',  w:12,h:28, body:'#1a85e0',roof:'#0d4a8a', onc:true, col:false},
+  {id:'truck', w:36,h:58, body:'#18a848',roof:'#0d6030', onc:false,col:true },
+  {id:'auto',  w:24,h:42, body:'#f0a800',roof:'#111',    onc:false,col:true },
+  {id:'auto',  w:24,h:42, body:'#f0a800',roof:'#111',    onc:true, col:false},
+  {id:'car',   w:24,h:40, body:'#7c20c8',roof:'#4a1088', onc:false,col:true },
+  {id:'car',   w:24,h:40, body:'#1878c8',roof:'#0e4a88', onc:true, col:true },
+];
+function spawnTraffic() {
+  const vt   = VTYPES[Math.floor(Math.random()*VTYPES.length)];
+  const lane = Math.floor(Math.random()*3);
+  G.traffic.push({...vt, x:LANES[lane], y:vt.onc?H+vt.h:-vt.h, lane,
+    spd: ph().spd*(vt.onc?.52:.32)+Math.random()*1.2, scared:0, wob:Math.random()*Math.PI*2 });
+}
+
+// ── OBSTACLE TYPES ─────────────────────────────────────────────
+const OBS = [
+  {tag:'Vendor', w:18,h:14, col:'#e06820', mp:0},
+  {tag:'Dog',    w:14,h:11, col:'#a07820', mp:0},
+  {tag:'Pothole',w:26,h:10, col:'#202030', mp:0},
+  {tag:'Barrel', w:16,h:20, col:'#e8b000', mp:0},
+  {tag:'Cow',    w:26,h:24, col:'#c8a870', mp:2},
+  {tag:'Cart',   w:22,h:20, col:'#906020', mp:3},
+];
+function spawnObs() {
+  const avail = OBS.filter(t => t.mp <= G.pi);
+  const t = avail[Math.floor(Math.random()*avail.length)];
+  G.obs.push({...t, x:LANES[Math.floor(Math.random()*3)], y:-60, wob:Math.random()*Math.PI*2, scared:0});
+}
+
+// ── PICKUP TYPES ───────────────────────────────────────────────
+const PUS = [
+  {tag:'Chai',  col:'#e82020', pts:10},
+  {tag:'Coin',  col:'#f8c800', pts:5 },
+  {tag:'Vada',  col:'#e87020', pts:15},
+  {tag:'Boost', col:'#00E5C0', pts:0, boost:true},
+];
+function spawnPu() {
+  const t = PUS[Math.floor(Math.random()*PUS.length)];
+  G.pu.push({...t, x:LANES[Math.floor(Math.random()*3)], y:-30, p:0});
+}
+
+// ── ENVIRONMENT BADGE ──────────────────────────────────────────
+let lastEnv = -1;
+function updateBadge() {
+  const b  = blend();
+  const el = document.getElementById('envbadge');
+  if      (b < .08  && lastEnv!==0) { lastEnv=0; el.textContent='Worli Sea Face Promenade'; }
+  else if (b>=.08 && b<=.92 && lastEnv!==1) { lastEnv=1; el.textContent='Approaching the Sea Link...'; }
+  else if (b > .92  && lastEnv!==2) { lastEnv=2; el.textContent='Bandra–Worli Sea Link'; }
+}
+
+// ── DRAW: SKY ──────────────────────────────────────────────────
+function drawSky() {
+  const p = ph();
+  c.fillStyle = p.sky0; c.fillRect(0, 0, W, H*.38);
+  c.fillStyle = p.sky1; c.fillRect(0, H*.28, W, H*.12);
+
+  // Stars (Night / Festival)
+  if (G.pi >= 3) {
+    for (let s=0; s<65; s++) {
+      c.fillStyle = `rgba(255,255,255,${(n1(G.t*.04+s)*.65+.25).toFixed(2)})`;
+      c.fillRect(hf(s*13.7+G.seed)*W, hf(s*7.3+G.seed)*H*.35, 1.2, 1.2);
+    }
+  }
+  // Sun (Dawn/Rush)
+  if (G.pi <= 1) {
+    c.fillStyle='rgba(255,180,40,0.18)'; c.beginPath(); c.arc(W*.63,H*.1,52,0,Math.PI*2); c.fill();
+    c.fillStyle='rgba(255,200,60,0.30)'; c.beginPath(); c.arc(W*.63,H*.1,30,0,Math.PI*2); c.fill();
+    c.fillStyle='rgba(255,220,90,0.72)'; c.beginPath(); c.arc(W*.63,H*.1,14,0,Math.PI*2); c.fill();
+  }
+  // Moon (Night+)
+  if (G.pi >= 3) {
+    c.fillStyle='rgba(220,230,255,0.65)'; c.beginPath(); c.arc(W*.68,H*.07,11,0,Math.PI*2); c.fill();
+    c.fillStyle='rgba(200,215,255,0.20)'; c.beginPath(); c.arc(W*.68,H*.07,24,0,Math.PI*2); c.fill();
+  }
+  // Festival sky
+  if (G.pi >= 4) {
+    c.fillStyle='rgba(120,0,100,0.20)'; c.fillRect(0,0,W,H*.38);
+    const fc = ['#FF1493','#FF6600','#8B00FF','#00BFFF','#00FF88'];
+    for (let l=0; l<7; l++) {
+      const lx=l/6*W, ly=H*.05+Math.sin(G.t*.03+l)*6;
+      c.fillStyle=fc[l%5]; c.beginPath(); c.arc(lx,ly,5,0,Math.PI*2); c.fill();
+      c.fillStyle=fc[l%5]+'44'; c.beginPath(); c.arc(lx,ly,12,0,Math.PI*2); c.fill();
+      if (l>0) { c.strokeStyle='rgba(255,255,255,0.12)'; c.lineWidth=.6; c.beginPath(); c.moveTo((l-1)/6*W,H*.05); c.lineTo(lx,ly); c.stroke(); }
+    }
+  }
+}
+
+// ── DRAW: MUMBAI SKYLINE ───────────────────────────────────────
+function drawSkyline() {
+  const skyY = H*.38;
+  const bldgs = [
+    [.01,12,42],[.04,18,62],[.08,10,36],[.11,24,96],[.16,15,55],[.20,32,128],
+    [.26,19,68],[.30,12,42],[.33,26,102],[.38,23,94],[.42,15,50],[.46,34,138],
+    [.52,22,76],[.56,17,58],[.60,30,112],[.65,12,40],[.68,24,88],[.72,15,52],
+    [.76,32,132],[.81,17,58],[.85,12,44],[.88,22,74],[.92,15,50],[.96,18,60]
+  ];
+  bldgs.forEach(([rx,bw,bh]) => {
+    const bx=rx*W, by=skyY-bh*.55;
+    c.fillStyle = G.pi>=4 ? 'rgba(40,10,60,0.9)' : 'rgba(15,18,45,0.88)';
+    c.fillRect(bx, by, bw, bh*.55);
+    // Windows
+    const wC=Math.floor(bw/5), wR=Math.floor(bh*.55/8);
+    for (let wr=0; wr<wR; wr++) {
+      for (let wc=0; wc<wC; wc++) {
+        if (hf(rx*100+wr*5+wc*3) < (G.pi>=3?.72:.44)) {
+          const wa = .25+n1(G.t*.006+wr*.3+wc*.4+rx*10)*.45;
+          c.fillStyle = G.pi>=4
+            ? `hsla(${Math.round(hf(rx+wr+wc)*360)},90%,65%,${wa.toFixed(2)})`
+            : G.pi>=3 ? `rgba(180,220,255,${wa.toFixed(2)})` : `rgba(255,230,100,${wa.toFixed(2)})`;
+          c.fillRect(bx+2+wc*5, by+2+wr*8, 3, 4);
+        }
+      }
+    }
+    // Antenna on tall buildings
+    if (bh > 80) {
+      c.strokeStyle='rgba(200,210,255,.5)'; c.lineWidth=.9;
+      c.beginPath(); c.moveTo(bx+bw/2,by); c.lineTo(bx+bw/2,by-12); c.stroke();
+      c.fillStyle=`rgba(255,60,60,${Math.abs(Math.sin(G.t*.05))>.7?.85:.12})`;
+      c.beginPath(); c.arc(bx+bw/2,by-12,2.5,0,Math.PI*2); c.fill();
+    }
+  });
+}
+
+// ── DRAW: SEA STRIP ────────────────────────────────────────────
+// Draws animated sea within a horizontal band [x0, x1]
+function drawSeaStrip(x0, x1, sideId) {
+  const p = ph();
+  c.fillStyle = p.sea0; c.fillRect(x0, H*.35, x1-x0, H);
+  for (let w=0; w<6; w++) {
+    const dep=w/5, yB=H*(.37+dep*.15), amp=3+dep*9;
+    const freq=.013+dep*.006, speed=.014+dep*.009;
+    const seed=w*41.3+sideId*200+G.seed*.01;
+    c.beginPath();
+    for (let x=x0; x<=x1; x+=2) {
+      const nv  = n1(x*freq+G.t*speed+seed+G.dist*.0005*(w+1));
+      const nv2 = n1(x*freq*1.6+G.t*speed*.6+seed*1.4);
+      const y   = yB+Math.sin(x*freq*6.5+G.t*speed*3+seed)*amp*(.5+nv*.5)+nv2*amp*.38;
+      x===x0 ? c.moveTo(x,y) : c.lineTo(x,y);
+    }
+    c.lineTo(x1,H); c.lineTo(x0,H); c.closePath();
+    const hue = G.pi>=4 ? 240+dep*30 : 200+dep*20;
+    c.fillStyle = `hsl(${hue},${50+dep*30}%,${8+dep*14}%)`;
+    c.fill();
+  }
+  // Foam
+  c.lineWidth=1.3;
+  for (let f=0; f<8; f++) {
+    const fx=x0+hf(f*19.3+sideId*50+G.seed)*(x1-x0);
+    const fy=H*.42+n1(f*3.7+G.t*.017)*H*.1;
+    const fa=n1(f*2.3+G.t*.023)*.38;
+    const len=6+hf(f*7)*18;
+    c.strokeStyle=`rgba(200,230,255,${fa.toFixed(2)})`;
+    c.beginPath(); c.moveTo(fx,fy); c.lineTo(fx+len,fy); c.stroke();
+  }
+  // Night reflections
+  if (G.pi >= 3) {
+    const refCols=['rgba(255,220,50,','rgba(0,230,180,','rgba(200,80,255,','rgba(50,180,255,'];
+    for (let i=0; i<4; i++) {
+      const rx=x0+hf(i*31+sideId*20+G.seed)*(x1-x0)*.8;
+      const ra=.15+n1(G.t*.03+i)*.12;
+      const rw2=2+hf(i*13)*8;
+      c.fillStyle=refCols[i%refCols.length]+ra+')';
+      c.fillRect(rx, H*.4+i*3, rw2, H*.1);
+    }
+  }
+}
+
+// ── DRAW: PROMENADE (left side during promenade zone) ─────────
+function drawPromenade(alpha) {
+  if (alpha <= 0) return;
+  c.globalAlpha = alpha;
+  const rl=RL(), seaW=rl*.58, walkX=seaW, walkW=rl-seaW;
+  const rd=ph().rain;
+
+  drawSeaStrip(0, seaW, 0);
+
+  // Stone tiles (scroll)
+  const tileH=30, tileOff=G.scroll%tileH;
+  for (let ty=0; ty<H+tileH; ty+=tileH) {
+    const y=ty-tileOff;
+    c.fillStyle = ty%60<30 ? 'rgba(70,60,90,0.75)' : 'rgba(58,50,78,0.75)';
+    c.fillRect(walkX,y,walkW,tileH);
+    c.strokeStyle='rgba(40,35,58,0.65)'; c.lineWidth=.5;
+    c.beginPath(); c.moveTo(walkX,y); c.lineTo(walkX+walkW,y); c.stroke();
+  }
+  // Sea railing
+  c.strokeStyle='rgba(180,200,255,0.55)'; c.lineWidth=1.3;
+  c.beginPath(); c.moveTo(walkX+2,0); c.lineTo(walkX+2,H); c.stroke();
+  for (let py=0; py<H; py+=32) {
+    const y=(py-G.scroll%32+H)%H;
+    c.strokeStyle='rgba(160,185,255,.45)'; c.lineWidth=1;
+    c.beginPath(); c.moveTo(walkX+2,y); c.lineTo(walkX+12,y); c.stroke();
+  }
+  // Road railing
+  c.strokeStyle='rgba(180,200,255,0.48)'; c.lineWidth=1.1;
+  c.beginPath(); c.moveTo(rl-2,0); c.lineTo(rl-2,H); c.stroke();
+  for (let py=0; py<H; py+=32) {
+    const y=(py-G.scroll%32+H)%H;
+    c.strokeStyle='rgba(160,185,255,.35)'; c.lineWidth=.8;
+    c.beginPath(); c.moveTo(rl-2,y); c.lineTo(rl-12,y); c.stroke();
+  }
+  // Street lamps
+  for (let li=0; li<8; li++) {
+    const ly=((li*100-G.scroll*.3)%H+H)%H;
+    const lampX=walkX+walkW-11;
+    c.strokeStyle='rgba(180,195,235,0.58)'; c.lineWidth=1.3;
+    c.beginPath(); c.moveTo(lampX,ly+20); c.lineTo(lampX,ly-5); c.lineTo(lampX-13,ly-5); c.stroke();
+    const glow=.35+Math.sin(G.t*.025+li)*.06;
+    c.fillStyle=`rgba(255,235,120,${glow.toFixed(2)})`; c.beginPath(); c.arc(lampX-13,ly-5,4.5,0,Math.PI*2); c.fill();
+    c.fillStyle='rgba(255,220,80,0.12)'; c.beginPath(); c.arc(lampX-13,ly-5,G.pi>=3?28:16,0,Math.PI*2); c.fill();
+    if (rd>.3) { c.fillStyle='rgba(120,160,255,0.15)'; c.beginPath(); c.ellipse(lampX-13,ly+28,9,3,0,0,Math.PI*2); c.fill(); }
+  }
+  // Benches
+  for (let bi=0; bi<5; bi++) {
+    const by=((bi*120+40-G.scroll*.18)%H+H)%H;
+    const bx=walkX+5;
+    c.fillStyle='rgba(100,70,45,0.82)'; c.fillRect(bx,by,24,5);
+    c.fillStyle='rgba(80,55,35,0.82)';  c.fillRect(bx,by-7,24,4);
+    c.fillStyle='rgba(70,48,28,0.72)';  c.fillRect(bx+3,by+5,4,7); c.fillRect(bx+17,by+5,4,7);
+    if (bi%2===0) drawPerson(bx+9, by-2, rd>.15, bi+20);
+  }
+  // Walking people
+  for (let pi=0; pi<9; pi++) {
+    const py=((pi*68+pi*13-G.scroll*.22)%H+H)%H;
+    const px=walkX+8+hf(pi*7+G.seed)*(walkW-20);
+    drawPerson(px, py, (rd>.12||pi%3===0) && rd>.05, pi);
+  }
+  // Lighthouse
+  if (G.dist < PROM_END*1.2) {
+    const lhx=seaW*.18, lhy=H*.36;
+    c.fillStyle='rgba(220,225,240,0.7)'; c.fillRect(lhx-5,lhy-35,10,35);
+    c.fillStyle='rgba(220,50,50,0.85)';  c.fillRect(lhx-6,lhy-42,12,8);
+    c.fillStyle='rgba(255,240,160,0.85)';c.beginPath(); c.arc(lhx,lhy-42,4,0,Math.PI*2); c.fill();
+    const ba=(G.t*.04)%(Math.PI*2);
+    c.save(); c.translate(lhx,lhy-42); c.rotate(ba);
+    c.fillStyle='rgba(255,240,160,0.07)'; c.beginPath(); c.moveTo(0,0); c.arc(0,0,120,-.3,.3); c.closePath(); c.fill();
+    c.restore();
+  }
+  c.globalAlpha=1;
+}
+
+// ── DRAW: PERSON WITH UMBRELLA ─────────────────────────────────
+function drawPerson(px, py, umbrella, seed) {
+  const leg=Math.sin(G.t*.09+seed*1.3);
+  c.fillStyle='rgba(30,28,55,0.88)';
+  c.fillRect(px-3,py-13,7,11);
+  c.beginPath(); c.arc(px+.5,py-16,4,0,Math.PI*2); c.fill();
+  c.strokeStyle='rgba(30,28,55,0.88)'; c.lineWidth=1.6;
+  c.beginPath(); c.moveTo(px+.5,py-3); c.lineTo(px+.5+leg*2.5,py+6); c.stroke();
+  c.beginPath(); c.moveTo(px+.5,py-3); c.lineTo(px+.5-leg*2.5+1.5,py+6); c.stroke();
+  if (umbrella) {
+    c.strokeStyle='rgba(120,130,180,0.85)'; c.lineWidth=1.1;
+    c.beginPath(); c.moveTo(px+.5,py-13); c.lineTo(px+.5,py-29); c.stroke();
+    const uc = seed%4===0?'rgba(220,30,50,0.82)':seed%4===1?'rgba(30,100,220,0.82)':seed%4===2?'rgba(30,160,60,0.82)':'rgba(160,40,200,0.82)';
+    c.fillStyle=uc;
+    c.beginPath(); c.moveTo(px+.5-15,py-29); c.quadraticCurveTo(px+.5,py-40,px+.5+15,py-29); c.closePath(); c.fill();
+    c.strokeStyle=uc.replace('0.82','0.55'); c.lineWidth=.9;
+    c.beginPath(); c.arc(px+.5,py-29,15,Math.PI,0); c.stroke();
+    for (let sp=0; sp<5; sp++) { const sx=px+.5-14+sp*7; c.strokeStyle=uc.replace('0.82','0.6'); c.lineWidth=.8; c.beginPath(); c.moveTo(sx,py-29+2); c.lineTo(sx+1,py-29+6); c.stroke(); }
+    if (Math.random()<.06) { c.fillStyle='rgba(160,210,255,0.7)'; c.beginPath(); c.arc(px-8+Math.random()*17,py-30,1.2,0,Math.PI*2); c.fill(); }
+  }
+}
+
+// ── DRAW: SEA (left/right for Sea Link) ───────────────────────
+function drawSeaLeft(alpha) {
+  if (alpha<=0) return;
+  c.globalAlpha=alpha; drawSeaStrip(0,RL(),2); c.globalAlpha=1;
+}
+function drawSeaRight(alpha) {
+  if (alpha<=0) return;
+  c.globalAlpha=alpha; drawSeaStrip(RR(),W,1); c.globalAlpha=1;
+}
+
+// ── DRAW: ROAD ─────────────────────────────────────────────────
+function drawRoad() {
+  const rl=RL(), rr=RR(), rw=rr-rl;
+  const bl=blend();
+  const rdCols=['#1a1c38','#141630','#0e1024','#0a0c1c','#12081e'];
+  c.fillStyle=rdCols[G.pi]; c.fillRect(rl,0,rw,H);
+
+  // Monsoon puddles
+  if (G.pi>=2) {
+    for (let p=0; p<6; p++) {
+      const pSd=p*23.7+Math.floor(G.dist/45+p)*11;
+      const px=rl+hf(pSd)*rw, py=(hf(pSd*1.8)*H+G.scroll*.4)%H;
+      const pw=15+hf(pSd*2.2)*24, ph2=4+hf(pSd*3.1)*7;
+      const rf=Math.sin(G.t*.07+p)*.025+.07;
+      c.fillStyle=`rgba(60,140,220,${rf.toFixed(3)})`;
+      c.beginPath(); c.ellipse(px,py,pw,ph2,0,0,Math.PI*2); c.fill();
+    }
+  }
+  // Lane dashes
+  [rl+rw*.34, rl+rw*.67].forEach((lx,li) => {
+    const dl=18+n1(G.dist*.009+li)*12, gl=14+n1(G.dist*.011+li*2)*9, tot=dl+gl;
+    c.setLineDash([dl,gl]); c.lineDashOffset=-(G.scroll%tot);
+    c.strokeStyle=`rgba(255,255,180,${(.14+n1(G.dist*.004)*.06).toFixed(3)})`; c.lineWidth=2;
+    c.beginPath(); c.moveTo(lx,0); c.lineTo(lx,H); c.stroke();
+  }); c.setLineDash([]);
+
+  // Plain road edges (promenade mode)
+  if (bl<1) {
+    c.globalAlpha=1-bl;
+    c.strokeStyle='rgba(200,210,255,0.12)'; c.lineWidth=3;
+    c.beginPath(); c.moveTo(rl,0); c.lineTo(rl,H); c.stroke();
+    c.beginPath(); c.moveTo(rr,0); c.lineTo(rr,H); c.stroke();
+    c.globalAlpha=1;
+  }
+  // Sea Link bridge barriers + pylons
+  if (bl>0) {
+    c.globalAlpha=bl;
+    c.fillStyle='rgba(8,10,22,0.65)';   c.fillRect(rl,0,10,H); c.fillRect(rr-10,0,10,H);
+    c.fillStyle='rgba(55,65,110,0.90)'; c.fillRect(rl,0,12,H);
+    c.fillStyle='rgba(75,90,145,0.62)'; c.fillRect(rl+12,0,3,H);
+    c.fillStyle='rgba(55,65,110,0.90)'; c.fillRect(rr-12,0,12,H);
+    c.fillStyle='rgba(75,90,145,0.62)'; c.fillRect(rr-15,0,3,H);
+    for (let bp=0; bp<H+40; bp+=40) {
+      const by2=(bp-G.scroll%40);
+      c.fillStyle='rgba(70,85,130,0.75)'; c.fillRect(rl+1,by2,10,5); c.fillRect(rr-11,by2,10,5);
+    }
+    // Scroll pylons
+    const pylonSpacing=280;
+    for (let pi2=0; pi2<5; pi2++) {
+      const pylonY=((pi2*pylonSpacing-G.scroll*.95)%(pylonSpacing*5)+pylonSpacing*5)%(pylonSpacing*5)-pylonSpacing;
+      if (pylonY<H+60 && pylonY>-pylonSpacing) drawPylon(rl,rr,pylonY);
+    }
+    c.globalAlpha=1;
+  }
+  // Night headlight cone
+  if (G.pi>=3) {
+    const cg=c.createRadialGradient(G.ax,G.ay-AH*.3,0,G.ax,G.ay-AH*.3,190);
+    cg.addColorStop(0,'rgba(255,245,160,.12)'); cg.addColorStop(1,'rgba(255,245,160,0)');
+    c.fillStyle=cg; c.fillRect(rl,0,rw,H);
+  }
+  // Wet sheen
+  if (G.pi>=2) { c.fillStyle=`rgba(60,120,220,${(.022+n1(G.t*.014)*.018).toFixed(3)})`; c.fillRect(rl,0,rw,H); }
+
+  // Turbo speed lines
+  if (G.boostTimer>0) {
+    const intensity=Math.min(1,G.boostTimer/60);
+    c.strokeStyle=`rgba(0,230,192,${(.18*intensity).toFixed(3)})`; c.lineWidth=1;
+    for (let sl=0; sl<8; sl++) {
+      const sx=rl+Math.random()*rw, sy=Math.random()*H, len=20+Math.random()*40;
+      c.beginPath(); c.moveTo(sx,sy); c.lineTo(sx,sy+len); c.stroke();
+    }
+  }
+}
+
+// ── DRAW: PYLON ────────────────────────────────────────────────
+function drawPylon(rl, rr, py) {
+  const rw=rr-rl, pylonH=210, pylonTop=py-pylonH;
+  const lLeg=rl+15, rLeg=rr-15;
+  c.fillStyle='rgba(90,110,168,0.76)';
+  c.fillRect(lLeg-5,pylonTop,10,pylonH+30); c.fillRect(rLeg-5,pylonTop,10,pylonH+30);
+  c.fillStyle='rgba(140,165,230,0.25)';
+  c.fillRect(lLeg-2,pylonTop,3,pylonH+30); c.fillRect(rLeg-2,pylonTop,3,pylonH+30);
+  c.fillStyle='rgba(80,100,158,0.65)'; c.fillRect(rl+9,py-9,rw-18,9);
+  c.fillStyle='rgba(110,130,190,0.72)';
+  c.beginPath(); c.moveTo(lLeg-7,pylonTop); c.lineTo(lLeg,pylonTop-16); c.lineTo(lLeg+7,pylonTop); c.closePath(); c.fill();
+  c.beginPath(); c.moveTo(rLeg-7,pylonTop); c.lineTo(rLeg,pylonTop-16); c.lineTo(rLeg+7,pylonTop); c.closePath(); c.fill();
+  const blink=Math.abs(Math.sin(G.t*.05))>.7;
+  c.fillStyle=blink?'rgba(255,60,60,0.9)':'rgba(255,60,60,0.14)';
+  c.beginPath(); c.arc(lLeg,pylonTop-16,3.5,0,Math.PI*2); c.fill();
+  c.beginPath(); c.arc(rLeg,pylonTop-16,3.5,0,Math.PI*2); c.fill();
+  if (blink) {
+    c.fillStyle='rgba(255,60,60,0.15)';
+    c.beginPath(); c.arc(lLeg,pylonTop-16,12,0,Math.PI*2); c.fill();
+    c.beginPath(); c.arc(rLeg,pylonTop-16,12,0,Math.PI*2); c.fill();
+  }
+  // Stay cables
+  c.lineWidth=.8;
+  for (let cab=0; cab<9; cab++) {
+    const t2=cab/8;
+    const lcx=rl+10+(rw*.46)*t2, lcy=py-6+t2*38;
+    c.strokeStyle='rgba(180,200,255,0.30)';
+    c.beginPath(); c.moveTo(lLeg,pylonTop-12); c.lineTo(lcx,lcy); c.stroke();
+    const rcx=rr-10-(rw*.46)*t2;
+    c.beginPath(); c.moveTo(rLeg,pylonTop-12); c.lineTo(rcx,lcy); c.stroke();
+  }
+}
+
+// ── DRAW: RAIN ─────────────────────────────────────────────────
+function updateRain() {
+  const rd=ph().rain;
+  if (rd>0 && Math.random()<rd*.44) G.rain.push({x:Math.random()*W,y:0,s:9+Math.random()*7,l:7+Math.random()*13,a:.3+rd*.42});
+  G.rain.forEach(r=>r.y+=r.s);
+  G.rain.forEach(r=>{if(r.y>H*.55&&Math.random()<.03&&rd>.3) G.splash.push({x:r.x,y:r.y,r:0,a:.55});});
+  G.splash.forEach(s=>{s.r+=.8;s.a-=.06;});
+  G.rain=G.rain.filter(r=>r.y<H+20);
+  G.splash=G.splash.filter(s=>s.a>0);
+}
+function drawRain() {
+  const rd=ph().rain; if(rd===0) return;
+  c.lineWidth=.9;
+  G.rain.forEach(d=>{c.strokeStyle=`rgba(140,200,255,${d.a.toFixed(2)})`;c.beginPath();c.moveTo(d.x,d.y);c.lineTo(d.x-2,d.y+d.l);c.stroke();});
+  c.lineWidth=.65;
+  G.splash.forEach(s=>{c.strokeStyle=`rgba(140,200,255,${s.a.toFixed(2)})`;c.beginPath();c.arc(s.x,s.y,s.r,0,Math.PI*2);c.stroke();});
+}
+function drawMist() {
+  const rd=ph().rain; if(rd<.2) return;
+  c.fillStyle=`rgba(60,100,180,${(rd*.08).toFixed(3)})`; c.fillRect(0,0,W,H);
+  const mg=c.createLinearGradient(0,H*.55,0,H);
+  mg.addColorStop(0,'rgba(40,80,160,0)'); mg.addColorStop(1,`rgba(40,80,160,${(rd*.14).toFixed(3)})`);
+  c.fillStyle=mg; c.fillRect(0,H*.55,W,H*.45);
+}
+
+// ── DRAW: REFINED AUTORICKSHAW ─────────────────────────────────
+function drawAuto() {
+  const x=G.ax, y=G.ay, hw=AW/2, hh=AH/2;
+  const inv=G.inv>0, flashOn=inv&&Math.floor(G.inv/6)%2===0;
+  if (flashOn) c.globalAlpha=.3;
+
+  // Boost trail
+  if (G.boostTimer>0) {
+    const ta=Math.min(.5,G.boostTimer/80);
+    c.fillStyle=`rgba(0,230,192,${ta.toFixed(2)})`;
+    c.fillRect(x-hw-2,y+hh,AW+4,6+G.boostTimer*.08);
+  }
+  // Shadow
+  c.fillStyle='rgba(0,0,0,0.38)'; c.beginPath(); c.ellipse(x,y+hh+3,hw*1.2,5,0,0,Math.PI*2); c.fill();
+  // Rear section
+  c.fillStyle='#E8A800';
+  if(c.roundRect){c.beginPath();c.roundRect(x-hw,y-hh+AH*.52,AW,AH*.38,3);c.fill();}
+  else c.fillRect(x-hw,y-hh+AH*.52,AW,AH*.38);
+  c.fillStyle='#B07800'; c.fillRect(x-hw,y-hh+AH*.52,AW,3.5);
+  // Body
+  c.fillStyle='#FFB800';
+  if(c.roundRect){c.beginPath();c.roundRect(x-hw,y-hh,AW,AH*.55,4);c.fill();}
+  else c.fillRect(x-hw,y-hh,AW,AH*.55);
+  // Side black strips
+  c.fillStyle='rgba(0,0,0,0.8)'; c.fillRect(x-hw,y-hh+AH*.2,4,AH*.32); c.fillRect(x+hw-4,y-hh+AH*.2,4,AH*.32);
+  // Hood
+  c.fillStyle='#0d0d0d';
+  if(c.roundRect){c.beginPath();c.roundRect(x-hw+2,y-hh,AW-4,AH*.42,4);c.fill();}
+  else c.fillRect(x-hw+2,y-hh,AW-4,AH*.42);
+  c.strokeStyle='rgba(50,55,80,0.6)'; c.lineWidth=1;
+  c.beginPath(); c.moveTo(x-hw+4,y-hh+2); c.quadraticCurveTo(x,y-hh-3,x+hw-4,y-hh+2); c.stroke();
+  // Windshield
+  c.fillStyle='rgba(100,200,255,0.32)';
+  c.beginPath(); c.moveTo(x-hw+5,y-hh+AH*.15); c.lineTo(x+hw-5,y-hh+AH*.15); c.lineTo(x+hw-7,y-hh+AH*.38); c.lineTo(x-hw+7,y-hh+AH*.38); c.closePath(); c.fill();
+  c.strokeStyle='rgba(20,20,28,0.85)'; c.lineWidth=1;
+  c.beginPath(); c.moveTo(x-hw+5,y-hh+AH*.15); c.lineTo(x+hw-5,y-hh+AH*.15); c.lineTo(x+hw-7,y-hh+AH*.38); c.lineTo(x-hw+7,y-hh+AH*.38); c.closePath(); c.stroke();
+  // Passenger bay
+  c.fillStyle='rgba(12,12,22,0.75)'; c.fillRect(x-hw+4,y-hh+AH*.38,AW-8,AH*.15);
+  c.fillStyle='rgba(25,30,50,0.85)'; c.fillRect(x-4,y-hh+AH*.38,9,9);
+  c.fillStyle='rgba(0,220,110,0.7)';  c.fillRect(x-2,y-hh+AH*.39,5,6);
+  // Headlights
+  const hlcol = G.pi>=3?'#ffffb0':G.boostTimer>0?'#00FFCC':'rgba(255,255,150,0.45)';
+  c.fillStyle=hlcol;
+  c.beginPath(); c.ellipse(x-hw+4,y-hh+AH*.48,4.5,3,0,0,Math.PI*2); c.fill();
+  c.beginPath(); c.ellipse(x+hw-4,y-hh+AH*.48,4.5,3,0,0,Math.PI*2); c.fill();
+  if (G.pi>=3||G.boostTimer>0) {
+    const bc=G.boostTimer>0?'rgba(0,255,200,0.08)':'rgba(255,255,160,0.07)';
+    c.fillStyle=bc;
+    c.beginPath(); c.moveTo(x-hw+4,y-hh+AH*.5); c.lineTo(x-hw-30,y+AH*.22); c.lineTo(x-hw-4,y+AH*.22); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(x+hw-4,y-hh+AH*.5); c.lineTo(x+hw+30,y+AH*.22); c.lineTo(x+hw+4,y+AH*.22); c.closePath(); c.fill();
+  }
+  // Rear lights
+  c.fillStyle='rgba(255,30,30,0.85)';
+  c.beginPath(); c.ellipse(x-hw+3,y-hh+AH*.85,3.5,2.5,0,0,Math.PI*2); c.fill();
+  c.beginPath(); c.ellipse(x+hw-3,y-hh+AH*.85,3.5,2.5,0,0,Math.PI*2); c.fill();
+  // Wheels
+  const dw=()=>{c.fillStyle='#090910';c.strokeStyle='rgba(60,70,100,0.85)';c.lineWidth=1.6;};
+  dw(); c.beginPath(); c.ellipse(x,y+hh-4,7,5,0,0,Math.PI*2); c.fill(); c.stroke();
+  c.fillStyle='rgba(90,100,140,0.75)'; c.beginPath(); c.arc(x,y+hh-4,3,0,Math.PI*2); c.fill();
+  [{wx:x-hw+1,wy:y+hh-2},{wx:x+hw-1,wy:y+hh-2}].forEach(w=>{
+    dw(); c.beginPath(); c.ellipse(w.wx,w.wy,7,5,0,0,Math.PI*2); c.fill(); c.stroke();
+    c.fillStyle='rgba(90,100,140,0.75)'; c.beginPath(); c.arc(w.wx,w.wy,3,0,Math.PI*2); c.fill();
+  });
+  // Mirror
+  c.fillStyle='#111'; c.fillRect(x-hw-5,y-hh+AH*.22,5,4);
+  // Exhaust
+  if (G.t%3===0) G.ptcl.push({x,y:y+hh+2,vx:(Math.random()-.5)*.3,vy:.8+Math.random(),r:1.5+Math.random()*2.5,a:.3,col:G.boostTimer>0?'rgba(0,220,180':'rgba(130,130,130'});
+  c.globalAlpha=1;
+}
+
+// ── DRAW: TRAFFIC VEHICLES ─────────────────────────────────────
+function drawVehicle(v) {
+  c.save(); c.translate(v.x,v.y); if(v.onc) c.scale(1,-1);
+  const hw=v.w/2, hh=v.h/2;
+  if (v.id==='bike') {
+    c.fillStyle=v.body; c.fillRect(-hw,-hh*.4,v.w,v.h*.8);
+    c.fillStyle='#090910';
+    c.beginPath(); c.ellipse(-hw+2,hh*.35,4,3,0,0,Math.PI*2); c.fill();
+    c.beginPath(); c.ellipse(hw-2, hh*.35,4,3,0,0,Math.PI*2); c.fill();
+    c.fillStyle=v.onc?'#ff4444':'#ffffaa';
+    c.beginPath(); c.ellipse(0,-hh*.5,3.5,2.5,0,0,Math.PI*2); c.fill();
+  } else {
+    c.fillStyle=v.body; c.fillRect(-hw,-hh,v.w,v.h*.76);
+    c.fillStyle=v.roof; c.fillRect(-hw+2,-hh,v.w-4,v.h*.4);
+    c.fillStyle='rgba(140,215,255,0.28)'; c.fillRect(-hw+4,-hh+3,v.w-8,v.h*.24);
+    if (v.id==='bus')  { c.fillStyle=v.roof; c.fillRect(-hw,-hh,v.w,v.h*.28); c.fillStyle='rgba(140,215,255,0.22)'; for(let wi=0;wi<3;wi++) c.fillRect(-hw+3+wi*10,-hh+v.h*.3,7,10); }
+    if (v.id==='truck'){ c.fillStyle=v.roof; c.fillRect(-hw,-hh,v.w,v.h*.3); }
+    c.fillStyle=v.onc?'#ff4444':'#ffffaa';
+    c.beginPath(); c.ellipse(-hw+3,-hh+v.h*.63,3.5,2.5,0,0,Math.PI*2); c.fill();
+    c.beginPath(); c.ellipse( hw-3,-hh+v.h*.63,3.5,2.5,0,0,Math.PI*2); c.fill();
+    c.fillStyle='#090910';
+    [{x:-hw,y:v.h*.09},{x:hw,y:v.h*.09},{x:-hw+1,y:-v.h*.1},{x:hw-1,y:-v.h*.1}].forEach(w=>{
+      c.beginPath(); c.ellipse(w.x,w.y,4.5,3.5,0,0,Math.PI*2); c.fill();
+    });
+  }
+  c.restore();
+}
+
+// ── DRAW: OBSTACLES ────────────────────────────────────────────
+function drawObs(o) {
+  c.save(); c.translate(o.x+Math.sin(o.wob)*1.5,o.y);
+  const hw=o.w/2, hh=o.h/2; c.fillStyle=o.col;
+  if (o.tag==='Pothole') {
+    c.beginPath(); c.ellipse(0,0,hw,hh*.6,0,0,Math.PI*2); c.fill();
+    c.fillStyle='#07070d'; c.beginPath(); c.ellipse(0,0,hw*.6,hh*.35,0,0,Math.PI*2); c.fill();
+    if (G.pi>=2) { c.fillStyle='rgba(60,130,220,.28)'; c.beginPath(); c.ellipse(0,0,hw*.4,hh*.22,0,0,Math.PI*2); c.fill(); }
+  } else {
+    c.fillRect(-hw,-hh,o.w,o.h);
+    if (o.tag==='Barrel') { c.fillStyle='rgba(0,0,0,0.4)'; for(let s=0;s<3;s++) c.fillRect(-hw,(-hh+s*o.h*.32),o.w,2); }
+  }
+  c.fillStyle='rgba(255,255,255,.55)'; c.font='8px monospace'; c.textAlign='center'; c.fillText(o.tag,0,hh+11);
+  c.restore();
+}
+
+// ── DRAW: PICKUPS ──────────────────────────────────────────────
+function drawPickup(p) {
+  p.p+=.08; const r=9+Math.sin(p.p)*2.5;
+  c.save(); c.translate(p.x,p.y);
+  c.beginPath(); c.arc(0,0,r,0,Math.PI*2); c.fillStyle=p.col+'55'; c.fill();
+  c.beginPath(); c.arc(0,0,r-1.5,0,Math.PI*2); c.fillStyle=p.col; c.fill();
+  c.fillStyle='#fff'; c.font='bold 9px monospace'; c.textAlign='center'; c.fillText(p.tag[0],0,3);
+  c.restore();
+}
+
+// ── DRAW: PARTICLES ────────────────────────────────────────────
+function drawParticles() {
+  G.ptcl.forEach(p=>{
+    c.globalAlpha=p.a;
+    c.fillStyle=`${p.col},${p.a.toFixed(2)})`;
+    c.beginPath(); c.arc(p.x,p.y,p.r,0,Math.PI*2); c.fill();
+  });
+  c.globalAlpha=1;
+}
+
+// ── GAME UPDATE ────────────────────────────────────────────────
+function update() {
+  const speed = actualSpeed();
+  if (G.boostTimer > 0) G.boostTimer--;
+  G.t++; G.lLock=Math.max(0,G.lLock-1); G.inv=Math.max(0,G.inv-1);
+  G.scroll+=speed; G.bScroll+=speed*.42;
+  G.dist+=speed*.025;
+  G.score+=Math.floor(speed*.08)+G.pi+(G.boostTimer>0?3:0);
+  G.turbo=Math.min(100,G.turbo+.09);
+  G.ax=lerp(G.ax,LANES[G.lane],.16);
+
+  if (G.pi<4 && G.dist>=ph().next) { G.pi++; toast('Entering: '+PHASES[G.pi].name.toUpperCase()); }
+
+  updateRain(); updateBadge();
+
+  // Spawn logic
+  G.obTick++; const si=Math.max(42,92-G.pi*9);
+  if (G.obTick>=si) { G.obTick=0; if(Math.random()<.78) spawnObs(); }
+  G.puTick++; if (G.puTick>=175+Math.random()*110) { G.puTick=0; spawnPu(); }
+  G.trTick++; const ti=Math.max(52,130-G.pi*14);
+  if (G.trTick>=ti) { G.trTick=0; if(Math.random()<.82) spawnTraffic(); }
+
+  // Move entities
+  const mv=speed*.86;
+  G.obs.forEach(o=>{o.y+=mv;o.wob+=.04;if(o.scared>0)o.scared--;});
+  G.pu.forEach(p=>{p.y+=mv*.3;p.p+=.09;});
+  G.ptcl.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.12;p.a-=.038;});
+  G.ptcl=G.ptcl.filter(p=>p.a>0);
+  G.traffic.forEach(v=>{
+    const dir=v.onc?1:-1;
+    v.y+=dir*(v.spd+(v.scared>0?-v.spd*.45:0));
+    v.wob+=.03; if(v.scared>0)v.scared--;
+  });
+
+  // Collision helper
+  function hit(x,y,w,h){ return G.inv===0&&Math.abs(x-G.ax)<(w/2+AW/2-5)&&Math.abs(y-G.ay)<(h/2+AH/2-6); }
+
+  // Traffic collisions
+  for (let i=G.traffic.length-1;i>=0;i--) {
+    const v=G.traffic[i];
+    if (v.col && hit(v.x,v.y,v.w,v.h)) {
+      G.traffic.splice(i,1); G.lives--; G.inv=90; G.crashFlash=90;
+      burst(G.ax,G.ay,'#FF2020',18,7); toast('Crash! Lives: '+G.lives);
+      if (G.lives<=0) { showOver(); return; } break;
+    }
+  }
+  // Obstacle collisions
+  for (let i=G.obs.length-1;i>=0;i--) {
+    const o=G.obs[i];
+    if (hit(o.x,o.y,o.w,o.h)) {
+      G.obs.splice(i,1); G.lives--; G.inv=90; G.crashFlash=90;
+      burst(G.ax,G.ay,'#FF2020',15,7); toast('Hit! Lives: '+G.lives);
+      if (G.lives<=0) { showOver(); return; } break;
+    }
+  }
+  // Pickup collisions
+  for (let i=G.pu.length-1;i>=0;i--) {
+    const p=G.pu[i];
+    if (Math.abs(p.x-G.ax)<(12+AW/2)&&Math.abs(p.y-G.ay)<(12+AH/2)) {
+      G.score+=p.pts;
+      if (p.boost) G.turbo=Math.min(100,G.turbo+40);
+      burst(p.x,p.y,p.col,10); toast(p.boost?'Boost charged! Press W!':'+'+p.pts+' '+p.tag);
+      G.pu.splice(i,1);
+    }
+  }
+
+  // Cleanup off-screen entities
+  G.obs=G.obs.filter(o=>o.y<H+85);
+  G.pu=G.pu.filter(p=>p.y<H+55);
+  G.traffic=G.traffic.filter(v=>v.onc?v.y<H+80:v.y>-v.h-20);
+  if (G.crashFlash>0) G.crashFlash--;
+
+  // HUD update
+  document.getElementById('hS').textContent = G.score.toLocaleString();
+  document.getElementById('hD').textContent = Math.floor(G.dist)+'km';
+  document.getElementById('hP').textContent = G.boostTimer>0 ? 'TURBO!' : ph().name;
+  document.getElementById('hL').textContent = '♥'.repeat(G.lives)+'♡'.repeat(3-G.lives);
+  document.getElementById('db').style.width = Math.min(100,G.dist/14).toFixed(0)+'%';
+  document.getElementById('tb').style.width = Math.round(G.turbo)+'%';
+}
+
+// ── MAIN RENDER LOOP ───────────────────────────────────────────
+function frame() {
+  if (G.live && !G.paused) update();
+  c.clearRect(0,0,W,H);
+  const bl=blend();
+
+  drawSky();
+  drawSkyline();
+  drawPromenade(1-bl);       // promenade fades out
+  drawSeaLeft(bl);           // left sea fades in (sea link)
+  drawSeaRight(bl);          // right sea fades in (sea link)
+  drawRoad();
+  drawMist(); drawRain();
+
+  // Depth-sort traffic
+  const farT  = G.traffic.filter(v=>v.y<G.ay-AH);
+  const nearT = G.traffic.filter(v=>v.y>=G.ay-AH);
+  farT.forEach(drawVehicle);
+  G.obs.forEach(drawObs);
+  G.pu.forEach(drawPickup);
+  nearT.forEach(drawVehicle);
+  if (G.live || G.over) drawAuto();
+  drawParticles();
+
+  // Crash flash overlay
+  if (G.crashFlash>0 && Math.floor(G.crashFlash/6)%2===0) {
+    c.fillStyle=`rgba(255,10,10,${(.4*G.crashFlash/90).toFixed(2)})`;
+    c.fillRect(0,0,W,H);
+  }
+  requestAnimationFrame(frame);
+}
+
+frame(); // kick off the loop
+</script>
+</body>
+</html>
